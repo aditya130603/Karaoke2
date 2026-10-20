@@ -11,6 +11,8 @@ import android.os.Process
 import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.webkit.WebResourceRequest
+import android.net.Uri
 import android.webkit.JavascriptInterface
 import android.widget.*
 import android.view.View
@@ -38,20 +40,34 @@ class MainActivity : Activity() {
         root.addView(label("YouTube lyrics + live microphone", 13f).apply { setTextColor(0xffa5aec8.toInt()) })
         val input = EditText(this).apply { hint="Paste YouTube link or video ID"; setSingleLine(); setTextColor(Color.WHITE); setHintTextColor(0xff8d96ae.toInt()); inputType=InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI }
         root.addView(input, LinearLayout.LayoutParams(-1, -2))
-        val load = Button(this).apply { text="LOAD KARAOKE VIDEO" }
+        val search = Button(this).apply { text="SEARCH YOUTUBE KARAOKE" }
+        root.addView(search)
+        val load = Button(this).apply { text="LOAD VIDEO LINK" }
         root.addView(load)
         player = WebView(this).apply {
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
             webChromeClient = WebChromeClient()
-            webViewClient = WebViewClient()
+            webViewClient = object : WebViewClient() {
+                override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
+                    val url = request?.url?.toString() ?: return false
+                    return !url.startsWith("https://www.youtube.com/") && !url.startsWith("https://m.youtube.com/") && !url.startsWith("https://youtube.com/") && !url.startsWith("https://youtu.be/")
+                }
+            }
+            settings.mediaPlaybackRequiresUserGesture = true
             setBackgroundColor(Color.BLACK)
         }
         root.addView(player, LinearLayout.LayoutParams(-1, 0, 1f))
+        search.setOnClickListener {
+            val query = input.text.toString().trim().ifBlank { "karaoke instrumental lyrics" }
+            player.loadUrl("https://m.youtube.com/results?search_query=" + Uri.encode(query + " karaoke instrumental lyrics"))
+            input.clearFocus()
+            (getSystemService(INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager).hideSoftInputFromWindow(input.windowToken, 0)
+        }
         load.setOnClickListener {
             val id = parseYouTubeId(input.text.toString())
             if (id == null) Toast.makeText(this, "Enter a valid YouTube video link", Toast.LENGTH_SHORT).show()
-            else player.loadDataWithBaseURL("https://www.youtube.com", iframe(id), "text/html", "UTF-8", null)
+            else player.loadUrl("https://m.youtube.com/watch?v=$id")
         }
         status = label("Connect Bluetooth speaker in Android settings, then enable mic", 13f)
         status.setTextColor(0xffb6c2df.toInt()); root.addView(status)
