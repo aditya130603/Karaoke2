@@ -5,6 +5,8 @@ import android.app.Activity
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.media.*
+import android.media.audiofx.AcousticEchoCanceler
+import android.media.audiofx.NoiseSuppressor
 import android.os.Build
 import android.os.Bundle
 import android.os.Process
@@ -72,7 +74,7 @@ class MainActivity : Activity() {
         status = label("Connect Bluetooth speaker in Android settings, then enable mic", 13f)
         status.setTextColor(0xffb6c2df.toInt()); root.addView(status)
         root.addView(label("Microphone volume", 14f))
-        volume = SeekBar(this).apply { max=200; progress=85 }
+        volume = SeekBar(this).apply { max=100; progress=45 }
         root.addView(volume)
         mic = Button(this).apply { text="MIC ON" }
         root.addView(mic)
@@ -111,11 +113,13 @@ class MicEngine(private val gain: () -> Float) {
     private var record: AudioRecord? = null
     private var output: AudioTrack? = null
     private var worker: Thread? = null
+    private var echo: AcousticEchoCanceler? = null
+    private var noise: NoiseSuppressor? = null
     fun start() {
         val rate=48000
         val minimum=max(AudioRecord.getMinBufferSize(rate, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT), 4096)
         val rec=AudioRecord.Builder()
-            .setAudioSource(MediaRecorder.AudioSource.VOICE_RECOGNITION)
+            .setAudioSource(MediaRecorder.AudioSource.VOICE_COMMUNICATION)
             .setAudioFormat(AudioFormat.Builder().setSampleRate(rate).setEncoding(AudioFormat.ENCODING_PCM_16BIT).setChannelMask(AudioFormat.CHANNEL_IN_MONO).build())
             .setBufferSizeInBytes(minimum * 2).build()
         if (rec.state != AudioRecord.STATE_INITIALIZED) { rec.release(); error("AudioRecord initialization failed") }
@@ -125,6 +129,8 @@ class MicEngine(private val gain: () -> Float) {
             .setBufferSizeInBytes(minimum * 2).setTransferMode(AudioTrack.MODE_STREAM).build()
         if (track.state != AudioTrack.STATE_INITIALIZED) { rec.release(); track.release(); error("AudioTrack initialization failed") }
         record=rec; output=track
+        try { if (AcousticEchoCanceler.isAvailable()) echo = AcousticEchoCanceler.create(rec.audioSessionId)?.apply { enabled = true } } catch (_: Exception) {}
+        try { if (NoiseSuppressor.isAvailable()) noise = NoiseSuppressor.create(rec.audioSessionId)?.apply { enabled = true } } catch (_: Exception) {}
         rec.startRecording(); track.play(); running.set(true)
         worker=thread(name="karaoke-mic", isDaemon=true) {
             Process.setThreadPriority(Process.THREAD_PRIORITY_AUDIO)
@@ -132,7 +138,7 @@ class MicEngine(private val gain: () -> Float) {
             while (running.get()) {
                 val n=rec.read(samples, 0, samples.size, AudioRecord.READ_BLOCKING)
                 if (n>0) {
-                    val v=gain().coerceIn(0f, 2f)
+                    val v=gain().coerceIn(0f, 1f)
                     for (i in 0 until n) samples[i]=(samples[i]*v).toInt().coerceIn(-32768,32767).toShort()
                     var offset=0
                     while (offset<n && running.get()) {
@@ -149,6 +155,7 @@ class MicEngine(private val gain: () -> Float) {
         try { record?.stop() } catch (_: Exception) {}
         try { output?.pause(); output?.flush() } catch (_: Exception) {}
         worker?.join(350)
+        echo?.release(); noise?.release(); echo=null; noise=null
         record?.release(); output?.release(); record=null; output=null; worker=null
     }
 }
