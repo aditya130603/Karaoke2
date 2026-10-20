@@ -1,11 +1,8 @@
-
 name: Build Karaoke Android APK
 
 on:
   push:
-    branches:
-      - main
-      - master
+    branches: [main, master]
   pull_request:
   workflow_dispatch:
 
@@ -17,6 +14,10 @@ jobs:
     name: Build Debug APK
     runs-on: ubuntu-latest
     timeout-minutes: 30
+
+    defaults:
+      run:
+        working-directory: karaoke-native-android
 
     steps:
       - name: Checkout repository
@@ -33,20 +34,18 @@ jobs:
         with:
           packages: 'platform-tools'
 
-      - name: Set up Gradle
+      - name: Set up Gradle 8.9
         uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
 
-      - name: Grant Gradle permissions
-        run: chmod +x ./gradlew
-
-      - name: Build Debug APK
-        run: ./gradlew assembleDebug --stacktrace --no-daemon
+      - name: Build debug APK
+        run: gradle --no-daemon :app:assembleDebug --stacktrace
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Karaoke-Android-Debug
-          path: |
-            **/build/outputs/apk/debug/*.apk
+          name: Karaoke2-Debug-APK
+          path: karaoke-native-android/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
           retention-days: 30
